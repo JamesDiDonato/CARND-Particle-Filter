@@ -19,21 +19,21 @@
 
 using namespace std;
 
+
+/*
+	Initialize the particle filter around the initial noisy position of the vehicle. 
+*/
 void ParticleFilter::init(double x, double y, double theta, double std[]) {
-	// TODO: Set the number of particles. Initialize all particles to first position (based on estimates of 
-	//   x, y, theta and their uncertainties from GPS) and all weights to 1. 
-	// Add random Gaussian noise to each particle.
-	// NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
 	default_random_engine gen;
-	num_particles = 100;
+	num_particles = 150;
 
-	// Create Normal Distributions for x,y,theta measurements
+	// Create Normal Distributions for x,y,theta
 	normal_distribution<double> dist_x(x, std[0]);
 	normal_distribution<double> dist_y(y, std[1]);
 	normal_distribution<double> dist_theta(theta, std[2]);
 
-	
+	//Create the particles by sampling from the normal distributions.
 	for (int i = 0; i < num_particles; i++) {
 		Particle particle;
 		particle.id = i;
@@ -51,12 +51,12 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
 
 }
 
+/*
+	Predicts where each particle (and thus the vehicle) is current located by updating 
+	the x,y, and theta state variables according to the velocity and yaw rate of the vehicle. 
+	The bicycle model is used to model the vehicles movement through space.
+*/
 void ParticleFilter::prediction(double delta_t, double std_pos[], double velocity, double yaw_rate) {
-	// TODO: Add measurements to each particle and add random Gaussian noise.
-	// NOTE: When adding noise you may find std::normal_distribution and std::default_random_engine useful.
-	//  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
-	//  http://www.cplusplus.com/reference/random/default_random_engine/
-
 	//For each particle, update the position and heading based on the measurement + gaussion noise	
 	
 	default_random_engine gen;
@@ -65,6 +65,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 
 		double x_f, y_f, theta_f;
 
+		//If the yaw rate is small enough, ignore it
 		if(fabs(yaw_rate) < 0.0001){
 			x_f = particles[i].x + velocity*delta_t*cos(particles[i].theta);
 			y_f = particles[i].y + velocity*delta_t*sin(particles[i].theta);
@@ -87,24 +88,22 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
 	}
 }
 
+/*
+	Helper function that finds the closest landmark (predicted) to each observation (&observations).
+*/
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
-	// TODO: Find the predicted measurement that is closest to each observed measurement and assign the 
-	//   observed measurement to this particular landmark.
-	// NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
-	//   implement this method and use it as a helper during the updateWeights phase.
-
-
 	// For each predicted landmark, find the transformed observation that is closest using a nested for-loop
 	// The complexity of the below algorithm runs in O(m*n), where m is the number of observations and n
 	// is the number of landmarks predicted within sensor range.
 
 	double distance; // Stores distance between observation and predicted landmarks.
-	double min_distance = numeric_limits<double>::max(); // Stores the smallest distance between observation and landmarks.
+	double min_distance; // Stores the smallest distance between each observation and landmarks.
 	int map_id = -1 ; //Stores the map ID of the closest landmark to each obesrvation
 
 	for (unsigned int i = 0; i < observations.size(); i++){		
 		
 		LandmarkObs obs = observations[i];
+		min_distance = numeric_limits<double>::max(); //reset the minimum distance
 
 		for (unsigned int j = 0; j< predicted.size(); j++){
 
@@ -121,6 +120,9 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 	}
 }
 
+/*
+	Updates the weights of each particle for the current time step.
+*/
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
 		const std::vector<LandmarkObs> &observations, const Map &map_landmarks) {
 	//Loop across every particle
@@ -161,13 +163,12 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       		double lm_y = map_landmarks.landmark_list[j].y_f;
       		int lm_id = map_landmarks.landmark_list[j].id_i;
 
+      		//Compute distance and add landmarks within range:
       		distance = dist (lm_x ,lm_y, p_x, p_y);
       		if(distance < sensor_range){
       			landmarks.push_back( LandmarkObs{ lm_id, lm_x, lm_y } );
       		}
 		}
-		double trimmd = map_landmarks.landmark_list.size() - landmarks.size();
-		//cout << " # of landmarks within range :  " << landmarks.size() << endl;
 
 		// Associate each landmark with the closest measured observation
 		dataAssociation(landmarks, trans_observations);
@@ -194,25 +195,26 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
       		obs_weight = ( 1.0/(2.0*M_PI*s_x*s_y)) * exp(-(pow(obs_x - pred_x,2)/(2*s_x*s_x) + (pow(obs_y - pred_y,2)/(2*s_y*s_y))));
 
-      		cout << "w = " << particles[k].weight << ". i = " << i << ;
-
        		particles[k].weight *= obs_weight;
 		}
-		cout << endl;
 		weights[k] = particles[k].weight;
 	}	
 }
 
+/*
+	Resample particles with replacement with probability proportional to their weight. 
+	Uses std::discrete_distribution to sample from a vector with probability
+	proportional to the values contained within.
+*/
 void ParticleFilter::resample() {
-	// TODO: Resample particles with replacement with probability proportional to their weight. 
-	// NOTE: You may find std::discrete_distribution helpful here.
-	//   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
 
 	default_random_engine gen;
 
+	//Create the discrete distribution using the weights vector
 	discrete_distribution<int> distribution(weights.begin(),weights.end());
 	vector<Particle> resample_particles;
 
+	//Resample for each particle:
 	for (int i = 0; i< num_particles; i++){
 		resample_particles.push_back(particles[distribution(gen)]);
 
